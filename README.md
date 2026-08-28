@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/Speedware/calsync/main/deploy/insta
 Asks for: domain, refresh interval (minutes), then group + slug pairs
 until the group field is left blank. Installs everything and starts.
 
-Subscription URL:  https://<domain>/cal/<slug>.ics
+Subscription URL: `https://<domain>/cal/<slug>.ics`
 
 CONTROL
 
