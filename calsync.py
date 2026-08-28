@@ -32,7 +32,9 @@ BASE = "https://umeos.ru"
 SCHEDULE_ENDPOINT = BASE + "/blocks/umerasp/json_rasper.php"
 MIN_INTERVAL_MIN = 60
 DEFAULT_INTERVAL_MIN = 360
-DEFAULT_TIMEOUT_SEC = 30
+DEFAULT_TIMEOUT_SEC = 45
+CONNECT_TIMEOUT_SEC = 10
+HTTP_RETRIES = 2
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 TZ = pytz.timezone("Europe/Moscow")
@@ -50,6 +52,12 @@ logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handle
 
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": UA, "Referer": BASE + "/"})
+_retry = requests.adapters.Retry(
+    total=HTTP_RETRIES, connect=HTTP_RETRIES, read=HTTP_RETRIES,
+    backoff_factor=3, status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset({"GET", "POST"}),
+)
+SESSION.mount("https://", requests.adapters.HTTPAdapter(max_retries=_retry))
 
 config: dict = {}
 
@@ -65,7 +73,7 @@ def fetch_schedule_html(group_name: str, timeout: int) -> str:
     resp = SESSION.post(
         SCHEDULE_ENDPOINT,
         data={"type": "group", "groupname": group_name},
-        timeout=timeout,
+        timeout=(CONNECT_TIMEOUT_SEC, timeout),
     )
     resp.raise_for_status()
     resp.encoding = "utf-8"
