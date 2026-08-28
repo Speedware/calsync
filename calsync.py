@@ -23,6 +23,8 @@ from ics.grammar.parse import ContentLine
 warnings.filterwarnings("ignore", category=FutureWarning, module="ics.component")
 init(autoreset=True)
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 CONFIG_FILE = "config.json"
 LOG_FILE = "calsync.log"
 LOG_BACKUP_DAYS = 31

@@ -108,7 +108,15 @@ upgrade|pull)
 	git config --system --add safe.directory "$DIR" 2>/dev/null || true
 	git -C "$DIR" pull --ff-only
 	"$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
+	sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/calsync.service" \
+		> /etc/systemd/system/calsync.service
+	if [[ "$DOMAIN" != "<domain>" ]]; then
+		sed "s#@DOMAIN@#$DOMAIN#g; s#@DIR@#$DIR#g" "$DIR/deploy/Caddyfile.tmpl" \
+			> /etc/caddy/Caddyfile
+		systemctl reload caddy 2>/dev/null || systemctl restart caddy
+	fi
 	chown -R "$USER_NAME:$USER_NAME" "$DIR"
+	systemctl daemon-reload
 	reload_service
 	echo "updated and restarted"
 	;;
