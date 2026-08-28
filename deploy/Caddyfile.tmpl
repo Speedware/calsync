@@ -1,0 +1,14 @@
+@DOMAIN@ {
+	root * @DIR@
+	encode gzip
+
+	@cal path /cal/*.ics
+	route @cal {
+		header Content-Type "text/calendar; charset=utf-8"
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "public, max-age=1800"
+		file_server
+	}
+
+	respond "calsync ok" 200
+}

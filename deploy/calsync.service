@@ -1,0 +1,16 @@
+[Unit]
+Description=calsync - schedule to ics
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/.venv/bin/python @DIR@/calsync.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

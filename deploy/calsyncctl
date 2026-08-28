@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ -f /etc/calsync.env ]] && . /etc/calsync.env
+DIR="${CALSYNC_DIR:-/opt/calsync}"
+DOMAIN="${CALSYNC_DOMAIN:-<domain>}"
+USER_NAME="${CALSYNC_USER:-calsync}"
+CFG="$DIR/config.json"
+PY="$DIR/.venv/bin/python"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+	add|rm|remove|update|refresh|interval|logs|upgrade|pull)
+		[[ $EUID -eq 0 ]] || exec sudo -E "$0" "$cmd" "$@" ;;
+esac
+
+reload_service() { systemctl restart calsync; }
+fix_owner() { chown "$USER_NAME:$USER_NAME" "$CFG"; }
+
+case "$cmd" in
+
+add)
+	name="${1:-}"; slug="${2:-}"
+	[[ -n "$name" && -n "$slug" ]] || { echo "usage: calsync add <group name> <slug>" >&2; exit 1; }
+	"$PY" - "$CFG" "$name" "$slug" <<'PY'
+import json, sys
+cfg_path, name, slug = sys.argv[1:4]
+cfg = json.load(open(cfg_path, encoding="utf-8"))
+groups = cfg.setdefault("groups", [])
+if any(g.get("slug") == slug and g.get("name") != name for g in groups):
+    sys.exit(f'slug "{slug}" already used by another group')
+groups[:] = [g for g in groups if g.get("name") != name]
+groups.append({"name": name, "slug": slug})
+json.dump(cfg, open(cfg_path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
+PY
+	fix_owner
+	reload_service
+	echo "added: $name  ->  https://$DOMAIN/cal/$slug.ics"
+	;;
+
+rm|remove)
+	slug="${1:-}"
+	[[ -n "$slug" ]] || { echo "usage: calsync rm <slug>" >&2; exit 1; }
+	"$PY" - "$CFG" "$slug" <<'PY'
+import json, sys
+cfg_path, slug = sys.argv[1:3]
+cfg = json.load(open(cfg_path, encoding="utf-8"))
+before = len(cfg.get("groups", []))
+cfg["groups"] = [g for g in cfg.get("groups", []) if (g.get("slug") or g.get("name")) != slug]
+if len(cfg["groups"]) == before:
+    sys.exit(f'no group with slug "{slug}"')
+json.dump(cfg, open(cfg_path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
+PY
+	fix_owner
+	reload_service
+	echo "removed: $slug (file cal/$slug.ics kept)"
+	;;
+
+list|ls)
+	"$PY" - "$CFG" "$DOMAIN" <<'PY'
+import json, sys
+cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+dom = sys.argv[2]
+groups = cfg.get("groups", [])
+if not groups:
+    print("no groups - calsync add <name> <slug>")
+else:
+    w = max(len(g.get("name", "")) for g in groups)
+    for g in groups:
+        slug = g.get("slug") or g.get("name")
+        print(f"{g.get('name',''):<{w}}   https://{dom}/cal/{slug}.ics")
+print(f"\nrefresh interval: {cfg.get('launch_interval_min', 360)} min")
+PY
+	;;
+
+interval)
+	mins="${1:-}"
+	[[ "$mins" =~ ^[0-9]+$ ]] || { echo "usage: calsync interval <minutes>  (min 60)" >&2; exit 1; }
+	"$PY" - "$CFG" "$mins" <<'PY'
+import json, sys
+cfg_path, mins = sys.argv[1], int(sys.argv[2])
+cfg = json.load(open(cfg_path, encoding="utf-8"))
+cfg["launch_interval_min"] = mins
+json.dump(cfg, open(cfg_path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
+print(f"interval: {mins} min" + ("" if mins >= 60 else "  (script will raise to 60)"))
+PY
+	fix_owner
+	reload_service
+	;;
+
+update|refresh)
+	sudo -u "$USER_NAME" "$PY" "$DIR/calsync.py" --once
+	;;
+
+logs)
+	journalctl -u calsync -n 100 -f
+	;;
+
+status)
+	systemctl --no-pager status calsync || true
+	echo
+	"$0" list
+	;;
+
+upgrade|pull)
+	git config --system --add safe.directory "$DIR" 2>/dev/null || true
+	git -C "$DIR" pull --ff-only
+	"$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
+	chown -R "$USER_NAME:$USER_NAME" "$DIR"
+	reload_service
+	echo "updated and restarted"
+	;;
+
+*)
+	cat <<EOF
+calsync - control
+
+  calsync list                  groups and .ics links
+  calsync add <group> <slug>    add a group (slug = .ics file name)
+  calsync rm <slug>             remove a group
+  calsync update                refresh schedule now
+  calsync interval <minutes>    auto-refresh period (min 60)
+  calsync status                service status + group list
+  calsync logs                  service logs (Ctrl+C to quit)
+  calsync upgrade               git pull + restart
+
+Subscription URL:  https://$DOMAIN/cal/<slug>.ics
+EOF
+	;;
+esac
