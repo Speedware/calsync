@@ -10,13 +10,23 @@ USER_NAME="${CALSYNC_USER:-calsync}"
 [[ $EUID -eq 0 ]] || { echo "run as root:  sudo bash install.sh [git-url]" >&2; exit 1; }
 command -v apt-get >/dev/null || { echo "Debian/Ubuntu required (apt-get not found)" >&2; exit 1; }
 
-read -rp "Domain (A record must already point here): " DOMAIN </dev/tty
+CUR_DOMAIN=""
+[[ -f /etc/calsync.env ]] && CUR_DOMAIN="$(. /etc/calsync.env; echo "${CALSYNC_DOMAIN:-}")"
+CUR_INTERVAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["launch_interval_min"])' "$DIR/config.json" 2>/dev/null || echo 360)"
+
+if [[ -n "$CUR_DOMAIN" ]]; then
+	read -rp "Domain [$CUR_DOMAIN]: " DOMAIN </dev/tty
+	DOMAIN="${DOMAIN:-$CUR_DOMAIN}"
+else
+	read -rp "Domain (A record must already point here): " DOMAIN </dev/tty
+fi
 [[ -n "$DOMAIN" ]] || { echo "domain required" >&2; exit 1; }
 
-read -rp "Refresh interval in minutes [360]: " INTERVAL </dev/tty
-INTERVAL="${INTERVAL:-360}"
+read -rp "Refresh interval in minutes [$CUR_INTERVAL]: " INTERVAL </dev/tty
+INTERVAL="${INTERVAL:-$CUR_INTERVAL}"
 [[ "$INTERVAL" =~ ^[0-9]+$ ]] || { echo "interval must be a number" >&2; exit 1; }
 
+echo "Add groups (leave the group field blank to keep the ones already configured):"
 PAIRS=()
 while true; do
 	read -rp "Enter the group (format ОУИТб-ПИ01-23-3) or leave the field blank to skip input: " GN </dev/tty || true
@@ -27,7 +37,7 @@ while true; do
 done
 
 echo
-echo "domain=$DOMAIN  interval=${INTERVAL}m  groups=${#PAIRS[@]}"
+echo "domain=$DOMAIN  interval=${INTERVAL}m  new groups=${#PAIRS[@]}"
 echo
 
 echo "==> system packages"
@@ -117,6 +127,11 @@ chmod +x "$DIR/deploy/calsyncctl"
 echo
 echo "================================================================"
 echo " Done. Calendars:"
-for g in ${PAIRS[@]+"${PAIRS[@]}"}; do echo "   https://$DOMAIN/cal/${g#*|}.ics"; done
+"$DIR/.venv/bin/python" - "$DIR/config.json" "$DOMAIN" <<'PY'
+import json, sys
+cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+for g in cfg.get("groups", []):
+    print(f"   https://{sys.argv[2]}/cal/{g.get('slug') or g.get('name')}.ics")
+PY
 echo " Control:  calsync list | add <group> <slug> | update | interval <min>"
 echo "================================================================"
