@@ -17,17 +17,17 @@ read -rp "Refresh interval in minutes [360]: " INTERVAL </dev/tty
 INTERVAL="${INTERVAL:-360}"
 [[ "$INTERVAL" =~ ^[0-9]+$ ]] || { echo "interval must be a number" >&2; exit 1; }
 
-GROUPS=()
+PAIRS=()
 while true; do
 	read -rp "Enter the group (format ОУИТб-ПИ01-23-3) or leave the field blank to skip input: " GN </dev/tty || true
 	[[ -n "$GN" ]] || break
 	read -rp "Enter slug (.ics file name): " GS </dev/tty || true
 	[[ -n "$GS" ]] || { echo "slug required, group skipped" >&2; continue; }
-	GROUPS+=("$GN|$GS")
+	PAIRS+=("$GN|$GS")
 done
 
 echo
-echo "domain=$DOMAIN  interval=${INTERVAL}m  groups=${#GROUPS[@]}"
+echo "domain=$DOMAIN  interval=${INTERVAL}m  groups=${#PAIRS[@]}"
 echo
 
 echo "==> system packages"
@@ -69,7 +69,7 @@ python3 -m venv "$DIR/.venv"
 
 echo "==> config"
 [[ -f "$DIR/config.json" ]] || cp "$DIR/config.example.json" "$DIR/config.json"
-"$DIR/.venv/bin/python" - "$DIR/config.json" "$INTERVAL" ${GROUPS[@]+"${GROUPS[@]}"} <<'PY'
+"$DIR/.venv/bin/python" - "$DIR/config.json" "$INTERVAL" ${PAIRS[@]+"${PAIRS[@]}"} <<'PY'
 import json, sys
 cfg_path, interval, pairs = sys.argv[1], int(sys.argv[2]), sys.argv[3:]
 cfg = json.load(open(cfg_path, encoding="utf-8"))
@@ -117,6 +117,6 @@ chmod +x "$DIR/deploy/calsyncctl"
 echo
 echo "================================================================"
 echo " Done. Calendars:"
-for g in ${GROUPS[@]+"${GROUPS[@]}"}; do echo "   https://$DOMAIN/cal/${g#*|}.ics"; done
+for g in ${PAIRS[@]+"${PAIRS[@]}"}; do echo "   https://$DOMAIN/cal/${g#*|}.ics"; done
 echo " Control:  calsync list | add <group> <slug> | update | interval <min>"
 echo "================================================================"
