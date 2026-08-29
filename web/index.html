@@ -71,12 +71,13 @@
   .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 16px;
     min-height: 76px;
     margin-bottom: clamp(14px, 3vw, 30px);
   }
   .brand img { height: 42px; width: auto; display: block; object-fit: contain; }
   .brand img.uni { height: 76px; }
+  .brand .divider { width: 1px; height: 38px; background: rgba(255, 255, 255, 0.4); flex: none; }
 
   .hero h1 {
     font-weight: 600;
@@ -200,6 +201,7 @@
     <section class="hero">
       <div class="brand">
         <img class="uni" src="/static/umte_logo.png" alt="СПбУТУиЭ" onerror="this.style.display='none'">
+        <span class="divider" aria-hidden="true"></span>
         <img src="/static/speedware_logo.png" alt="Speedware" onerror="this.style.display='none'">
       </div>
       <h1>Расписание СПБУТУиЭ</h1>
