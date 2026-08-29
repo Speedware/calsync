@@ -12,7 +12,7 @@ command -v apt-get >/dev/null || { echo "Debian/Ubuntu required (apt-get not fou
 
 CUR_DOMAIN=""
 [[ -f /etc/calsync.env ]] && CUR_DOMAIN="$(. /etc/calsync.env; echo "${CALSYNC_DOMAIN:-}")"
-CUR_INTERVAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["launch_interval_min"])' "$DIR/config.json" 2>/dev/null || echo 360)"
+CUR_INTERVAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["launch_interval_min"])' "$DIR/config.json" 2>/dev/null || echo 60)"
 
 if [[ -n "$CUR_DOMAIN" ]]; then
 	read -rp "Domain [$CUR_DOMAIN]: " DOMAIN </dev/tty
@@ -102,10 +102,12 @@ chown -R "$USER_NAME:$USER_NAME" "$DIR"
 chmod 755 "$DIR" "$DIR/cal"
 
 echo "==> systemd"
-sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/calsync.service" \
-	> /etc/systemd/system/calsync.service
+for unit in calsync calsync-web; do
+	sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/$unit.service" \
+		> "/etc/systemd/system/$unit.service"
+done
 systemctl daemon-reload
-systemctl enable --now calsync
+systemctl enable --now calsync calsync-web
 
 echo "==> caddy config"
 sed "s#@DOMAIN@#$DOMAIN#g; s#@DIR@#$DIR#g" "$DIR/deploy/Caddyfile.tmpl" \

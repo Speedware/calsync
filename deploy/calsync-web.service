@@ -1,0 +1,16 @@
+[Unit]
+Description=calsync web - subscription page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/.venv/bin/waitress-serve --listen=127.0.0.1:8000 web:app
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

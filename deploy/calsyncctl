@@ -71,7 +71,7 @@ else:
     for g in groups:
         slug = g.get("slug") or g.get("name")
         print(f"{g.get('name',''):<{w}}   https://{dom}/cal/{slug}.ics")
-print(f"\nrefresh interval: {cfg.get('launch_interval_min', 360)} min")
+print(f"\nrefresh interval: {cfg.get('launch_interval_min', 60)} min")
 PY
 	;;
 
@@ -95,11 +95,12 @@ update|refresh)
 	;;
 
 logs)
-	journalctl -u calsync -n 100 -f
+	unit="calsync"; [[ "${1:-}" == web ]] && unit="calsync-web"
+	journalctl -u "$unit" -n 100 -f
 	;;
 
 status)
-	systemctl --no-pager status calsync || true
+	systemctl --no-pager status calsync calsync-web || true
 	echo
 	"$0" list
 	;;
@@ -108,8 +109,10 @@ upgrade|pull)
 	git config --system --add safe.directory "$DIR" 2>/dev/null || true
 	git -C "$DIR" pull --ff-only
 	"$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
-	sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/calsync.service" \
-		> /etc/systemd/system/calsync.service
+	for unit in calsync calsync-web; do
+		sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/$unit.service" \
+			> "/etc/systemd/system/$unit.service"
+	done
 	if [[ "$DOMAIN" != "<domain>" ]]; then
 		sed "s#@DOMAIN@#$DOMAIN#g; s#@DIR@#$DIR#g" "$DIR/deploy/Caddyfile.tmpl" \
 			> /etc/caddy/Caddyfile
@@ -117,7 +120,7 @@ upgrade|pull)
 	fi
 	chown -R "$USER_NAME:$USER_NAME" "$DIR"
 	systemctl daemon-reload
-	reload_service
+	systemctl restart calsync calsync-web
 	echo "updated and restarted"
 	;;
 
@@ -131,7 +134,7 @@ calsync - control
   calsync update                refresh schedule now
   calsync interval <minutes>    auto-refresh period (min 60)
   calsync status                service status + group list
-  calsync logs                  service logs (Ctrl+C to quit)
+  calsync logs [web]            service logs (Ctrl+C to quit)
   calsync upgrade               git pull + restart
 
 Subscription URL:  https://$DOMAIN/cal/<slug>.ics

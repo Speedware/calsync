@@ -3,3 +3,5 @@ beautifulsoup4
 ics
 pytz
 colorama
+flask
+waitress

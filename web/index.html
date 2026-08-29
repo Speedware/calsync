@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Расписание СПБУТУиЭ в календаре</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1b4c81;
+    --pad-x: clamp(22px, 5vw, 76px);
+    --pad-y: clamp(34px, 7vh, 88px);
+    --gap: clamp(28px, 6vw, 80px);
+    --ink: #16202b;
+    --muted: #8a96a3;
+    --line: #e3e7ee;
+    --accent: #3b7bf5;
+    --accent-press: #2f66db;
+    --grey: #eaeef3;
+    --grey-press: #dfe4ea;
+    --field-bg: #e9f1fc;
+    --field-border: #d6e4fb;
+    --field-ink: #33465f;
+    --err: #e0413c;
+    --ok: #2e9e58;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: 'Golos Text', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #fff;
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: clamp(18px, 3vh, 40px) var(--pad-x) var(--pad-y);
+    display: grid;
+    grid-template-columns: 1fr minmax(360px, 430px);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--gap);
+  }
+
+  .hero { grid-column: 1; grid-row: 1; align-self: start; }
+
+  .art {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+    margin-top: clamp(-110px, -8vw, -48px);
+    margin-bottom: calc(-1 * var(--pad-y));
+    margin-left: calc(-1 * (var(--pad-x) + max(0px, (100vw - 1360px) / 2)));
+    margin-right: calc(-1 * var(--gap));
+    background: url('/umte.png') left top / 100% auto no-repeat;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 76px;
+    margin-bottom: clamp(14px, 3vw, 30px);
+  }
+  .brand img { height: 42px; width: auto; display: block; object-fit: contain; }
+  .brand img.uni { height: 76px; }
+
+  .hero h1 {
+    font-weight: 600;
+    font-size: clamp(30px, 4.4vw, 58px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .hero .sub {
+    margin-top: 6px;
+    font-weight: 500;
+    font-size: clamp(16px, 1.9vw, 26px);
+    opacity: 0.95;
+  }
+  .panel {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    align-self: center;
+    display: flex;
+    justify-content: center;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 430px;
+    background: #fff;
+    color: var(--ink);
+    border-radius: 30px;
+    padding: clamp(26px, 3.4vw, 38px);
+    box-shadow: 0 44px 90px -34px rgba(8, 26, 52, 0.55);
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .mark {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+    background: var(--accent);
+    border-radius: 11px;
+  }
+  .mark img { width: 22px; height: 22px; filter: brightness(0) invert(1); }
+  .card-head b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-body { display: grid; }
+  .step { grid-area: 1 / 1; animation: stepin .2s ease; }
+  .step[hidden] { display: block; visibility: hidden; pointer-events: none; }
+  @keyframes stepin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  label { display: block; margin-bottom: 9px; font-size: 15px; font-weight: 600; }
+
+  input {
+    width: 100%;
+    font: inherit;
+    font-size: 16px;
+    padding: 15px 17px;
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--ink);
+    outline: none;
+    transition: border-color .15s;
+  }
+  input:focus { border-color: var(--accent); }
+  #url {
+    background: var(--field-bg);
+    border-color: var(--field-border);
+    color: var(--field-ink);
+    font-size: 14px;
+  }
+
+  #hint { margin: 12px 2px 0; font-size: 13px; color: var(--muted); min-height: 1.1em; text-align: center; }
+  #hint.error { color: var(--err); font-weight: 500; }
+  .ok-hint { margin: 10px 2px 0; font-size: 13px; color: var(--ok); }
+
+  button, .btn {
+    display: block;
+    width: 100%;
+    font: inherit;
+    font-weight: 600;
+    font-size: 16px;
+    text-align: center;
+    text-decoration: none;
+    padding: 14px 16px;
+    border: 0;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+  }
+  .primary { background: var(--accent); color: #fff; }
+  .primary:hover { background: var(--accent-press); }
+  .grey { background: var(--grey); color: var(--ink); }
+  .grey:hover { background: var(--grey-press); }
+  button:disabled { opacity: .55; cursor: default; }
+
+  #find { margin-top: 18px; }
+  .done-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 22px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+
+  @media (max-width: 900px) {
+    .page { display: flex; flex-direction: column; gap: 30px; }
+    .hero { order: 1; }
+    .panel { order: 2; align-self: stretch; }
+    .art {
+      order: 3;
+      aspect-ratio: 1536 / 1024;
+      height: auto;
+      min-height: 40vw;
+      overflow: visible;
+      margin: 0 calc(-1 * var(--pad-x)) calc(-1 * var(--pad-y));
+      background-position: left bottom;
+      background-size: 100% auto;
+      opacity: 0.5;
+    }
+  }
+</style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="brand">
+        <img class="uni" src="/static/umte_logo.png" alt="СПбУТУиЭ" onerror="this.style.display='none'">
+        <img src="/static/speedware_logo.png" alt="Speedware" onerror="this.style.display='none'">
+      </div>
+      <h1>Расписание СПБУТУиЭ</h1>
+      <div class="sub">В вашем календаре</div>
+    </section>
+
+    <div class="art" aria-hidden="true"></div>
+
+    <section class="panel">
+      <div class="card">
+        <div class="card-head">
+          <span class="mark" aria-hidden="true">
+            <img src="/static/calsync_logo.svg" alt="">
+          </span>
+          <b>Calsync</b>
+        </div>
+
+        <div class="card-body">
+          <div class="step" id="step-find">
+            <label for="group">Введите группу</label>
+            <input id="group" placeholder="ОУИТб-ПИ01-23-3" autocomplete="off" spellcheck="false">
+            <button id="find" class="primary">Найти</button>
+            <p id="hint" data-default="*Поиск чувствителен к регистру">*Поиск чувствителен к регистру</p>
+          </div>
+
+          <div class="step" id="step-done" hidden>
+            <h3 class="done-title">Готово</h3>
+            <label>Ваша ссылка</label>
+            <input id="url" readonly onclick="this.select()">
+            <p class="ok-hint">Мы нашли группу и сгенерировали ссылку подключения</p>
+            <div class="row">
+              <button id="copy" type="button" class="grey">Скопировать</button>
+              <a id="webcal" class="btn primary">В календарь</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const groupEl = $('group'), findEl = $('find'), hintEl = $('hint');
+  const steps = [...document.querySelectorAll('.step')];
+  const DEFAULT_HINT = hintEl.dataset.default;
+
+  function show(id) {
+    steps.forEach((s) => { s.hidden = s.id !== id; });
+    const el = $(id);
+    el.style.animation = 'none'; void el.offsetHeight; el.style.animation = '';
+  }
+  const setHint = (t, err) => { hintEl.textContent = t; hintEl.className = err ? 'error' : ''; };
+
+  async function find() {
+    const group = groupEl.value.trim();
+    if (!group) { setHint('Введите название группы', true); return; }
+
+    findEl.disabled = true;
+    setHint('Проверяем…', false);
+    try {
+      const r = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group }),
+      });
+      const data = await r.json();
+      if (!data.ok) { setHint(data.error || 'Не получилось', true); return; }
+      $('url').value = data.url;
+      $('webcal').href = data.webcal;
+      show('step-done');
+    } catch (e) {
+      setHint('Ошибка сети, попробуйте ещё раз', true);
+    } finally {
+      findEl.disabled = false;
+    }
+  }
+
+  findEl.addEventListener('click', find);
+  groupEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') find(); });
+
+  $('copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('url').value);
+      $('copy').textContent = 'Скопировано';
+      setTimeout(() => ($('copy').textContent = 'Скопировать'), 1500);
+    } catch (e) {
+      $('url').select();
+      document.execCommand('copy');
+    }
+  });
+</script>
+</body>
+</html>

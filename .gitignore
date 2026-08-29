@@ -1,9 +1,10 @@
-.venv/
-venv/
-__pycache__/
 *.pyc
-config.json
+.DS_Store
+.config.lock
+.venv/
+__pycache__/
 cal/
 calsync.log*
-.DS_Store
+config.json
 debug_login_*.png
+venv/

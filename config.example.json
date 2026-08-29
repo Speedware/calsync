@@ -1,5 +1,5 @@
 {
-    "launch_interval_min": 360,
+    "launch_interval_min": 60,
     "request_timeout_sec": 30,
     "calendar_path": "cal",
     "subject_replacements": {
