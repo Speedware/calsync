@@ -75,6 +75,8 @@
     min-height: 76px;
     margin-bottom: clamp(14px, 3vw, 30px);
   }
+  .brand a { display: block; line-height: 0; transition: opacity .15s; }
+  .brand a:hover { opacity: 0.75; }
   .brand img { height: 42px; width: auto; display: block; object-fit: contain; }
   .brand img.uni { height: 76px; }
   .brand .divider { width: 1px; height: 38px; background: rgba(255, 255, 255, 0.4); flex: none; }
@@ -200,9 +202,13 @@
   <main class="page">
     <section class="hero">
       <div class="brand">
-        <img class="uni" src="/static/umte_logo.png" alt="СПбУТУиЭ" onerror="this.style.display='none'">
+        <a href="https://umeos.ru" target="_blank" rel="noopener">
+          <img class="uni" src="/static/umte_logo.png" alt="СПбУТУиЭ" onerror="this.style.display='none'">
+        </a>
         <span class="divider" aria-hidden="true"></span>
-        <img src="/static/speedware_logo.png" alt="Speedware" onerror="this.style.display='none'">
+        <a href="https://github.com/Speedware" target="_blank" rel="noopener">
+          <img src="/static/speedware_logo.png" alt="Speedware" onerror="this.style.display='none'">
+        </a>
       </div>
       <h1>Расписание СПБУТУиЭ</h1>
       <div class="sub">В вашем календаре</div>
