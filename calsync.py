@@ -149,6 +149,37 @@ def _uid(slug: str, lesson: dict) -> str:
     return re.sub(r"\s+", "_", raw) + "@umeos.ru"
 
 
+class _KeepOld(Exception):
+    pass
+
+
+def _event_end_date(event):
+    end = getattr(event, "end", None)
+    dt = getattr(end, "datetime", end)
+    return dt.date()
+
+
+def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) -> int:
+    if not old_content:
+        return 0
+    try:
+        events = list(Calendar(old_content).events)
+    except Exception as exc:
+        logging.error(Fore.RED + f"{group_name}: existing .ics unreadable, keeping it as-is: {exc}")
+        raise _KeepOld()
+
+    kept = 0
+    for event in events:
+        try:
+            past = _event_end_date(event) < feed_start
+        except Exception:
+            past = True
+        if past:
+            cal.events.add(event)
+            kept += 1
+    return kept
+
+
 def create_ics(lessons: list[dict], group_name: str, slug: str) -> None:
     path_prefix = config.get("calendar_path", "cal")
     os.makedirs(path_prefix, exist_ok=True)
@@ -183,15 +214,10 @@ def create_ics(lessons: list[dict], group_name: str, slug: str) -> None:
     cal.extra.append(ContentLine(name="X-WR-CALNAME", value=group_name))
     cal.extra.append(ContentLine(name="NAME", value=group_name))
 
-    archived = 0
-    if old_content:
-        try:
-            for event in Calendar(old_content).events:
-                if event.end.datetime.date() < feed_start:
-                    cal.events.add(event)
-                    archived += 1
-        except Exception as exc:
-            logging.warning(Fore.YELLOW + f"{group_name}: could not parse existing {slug}.ics, history lost: {exc}")
+    try:
+        archived = _carry_over(old_content, feed_start, cal, group_name)
+    except _KeepOld:
+        return
 
     subject_replacements = config.get("subject_replacements", {})
     teacher_replacements = config.get("teacher_replacements", {})
