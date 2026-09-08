@@ -273,7 +273,11 @@ def process_group(group: dict, timeout: int) -> bool:
         logging.warning(Fore.YELLOW + f"{name}: empty schedule or parse failed")
         return False
 
-    create_ics(lessons, name, slug)
+    try:
+        create_ics(lessons, name, slug)
+    except OSError as exc:
+        logging.error(Fore.RED + f"{name}: cannot write {slug}.ics: {exc}")
+        return False
     return True
 
 
