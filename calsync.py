@@ -170,7 +170,10 @@ def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) ->
     try:
         events = list(Calendar(old_content).events)
     except Exception as exc:
-        logging.error(Fore.RED + f"{group_name}: existing .ics unreadable, keeping it as-is: {exc}")
+        logging.error(
+            Fore.RED + f"{group_name}: existing .ics unreadable, keeping it as-is: {exc}",
+            exc_info=True,
+        )
         raise _KeepOld()
     finally:
         sys.setrecursionlimit(old_limit)
