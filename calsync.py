@@ -35,6 +35,8 @@ DEFAULT_INTERVAL_MIN = 60
 DEFAULT_TIMEOUT_SEC = 45
 CONNECT_TIMEOUT_SEC = 10
 HTTP_RETRIES = 2
+ARCHIVE_DAYS = 365
+PARSE_RECURSION_LIMIT = 10000
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 TZ = pytz.timezone("Europe/Moscow")
@@ -162,16 +164,25 @@ def _event_end_date(event):
 def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) -> int:
     if not old_content:
         return 0
+
+    old_limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(old_limit, PARSE_RECURSION_LIMIT))
     try:
         events = list(Calendar(old_content).events)
     except Exception as exc:
         logging.error(Fore.RED + f"{group_name}: existing .ics unreadable, keeping it as-is: {exc}")
         raise _KeepOld()
+    finally:
+        sys.setrecursionlimit(old_limit)
 
+    cutoff = feed_start - timedelta(days=ARCHIVE_DAYS)
     kept = 0
     for event in events:
         try:
-            past = _event_end_date(event) < feed_start
+            end_date = _event_end_date(event)
+            past = end_date < feed_start
+            if past and end_date < cutoff:
+                continue
         except Exception:
             past = True
         if past:
