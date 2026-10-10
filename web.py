@@ -89,7 +89,8 @@ def _validate(group: str) -> tuple[str | None, str | None]:
     except Exception:
         raise Upstream()
     canonical = _canonical_group(html)
-    _cache[key] = (time.time(), canonical, html if canonical else None)
+    if canonical:
+        _cache[key] = (time.time(), canonical, html)
     return canonical, (html if canonical else None)
 
 
