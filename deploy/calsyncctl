@@ -5,6 +5,8 @@ set -euo pipefail
 DIR="${CALSYNC_DIR:-/opt/calsync}"
 DOMAIN="${CALSYNC_DOMAIN:-<domain>}"
 USER_NAME="${CALSYNC_USER:-calsync}"
+USE_CADDY="${CALSYNC_USE_CADDY:-yes}"
+LISTEN="${CALSYNC_LISTEN:-127.0.0.1:8000}"
 CFG="$DIR/config.json"
 PY="$DIR/.venv/bin/python"
 
@@ -109,11 +111,11 @@ upgrade|pull)
 	git config --system --add safe.directory "$DIR" 2>/dev/null || true
 	git -C "$DIR" pull --ff-only
 	"$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
-	for unit in calsync calsync-web; do
-		sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/$unit.service" \
-			> "/etc/systemd/system/$unit.service"
-	done
-	if [[ "$DOMAIN" != "<domain>" ]]; then
+	sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/calsync.service" \
+		> "/etc/systemd/system/calsync.service"
+	sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g; s#@LISTEN@#$LISTEN#g" "$DIR/deploy/calsync-web.service" \
+		> "/etc/systemd/system/calsync-web.service"
+	if [[ "$USE_CADDY" == "yes" && "$DOMAIN" != "<domain>" ]]; then
 		sed "s#@DOMAIN@#$DOMAIN#g; s#@DIR@#$DIR#g" "$DIR/deploy/Caddyfile.tmpl" \
 			> /etc/caddy/Caddyfile
 		systemctl reload caddy 2>/dev/null || systemctl restart caddy

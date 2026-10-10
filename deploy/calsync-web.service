@@ -8,7 +8,7 @@ Type=simple
 User=@USER@
 Group=@USER@
 WorkingDirectory=@DIR@
-ExecStart=@DIR@/.venv/bin/waitress-serve --listen=127.0.0.1:8000 web:app
+ExecStart=@DIR@/.venv/bin/waitress-serve --listen=@LISTEN@ web:app
 Restart=on-failure
 RestartSec=10
 

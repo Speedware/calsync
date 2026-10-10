@@ -11,7 +11,11 @@ USER_NAME="${CALSYNC_USER:-calsync}"
 command -v apt-get >/dev/null || { echo "Debian/Ubuntu required (apt-get not found)" >&2; exit 1; }
 
 CUR_DOMAIN=""
-[[ -f /etc/calsync.env ]] && CUR_DOMAIN="$(. /etc/calsync.env; echo "${CALSYNC_DOMAIN:-}")"
+CUR_USE_CADDY="yes"
+if [[ -f /etc/calsync.env ]]; then
+	CUR_DOMAIN="$(. /etc/calsync.env; echo "${CALSYNC_DOMAIN:-}")"
+	CUR_USE_CADDY="$(. /etc/calsync.env; echo "${CALSYNC_USE_CADDY:-yes}")"
+fi
 CUR_INTERVAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["launch_interval_min"])' "$DIR/config.json" 2>/dev/null || echo 60)"
 
 if [[ -n "$CUR_DOMAIN" ]]; then
@@ -21,6 +25,19 @@ else
 	read -rp "Domain (A record must already point here): " DOMAIN </dev/tty
 fi
 [[ -n "$DOMAIN" ]] || { echo "domain required" >&2; exit 1; }
+
+read -rp "Install Caddy here and manage HTTPS automatically? [${CUR_USE_CADDY}] (y/n): " USE_CADDY_IN </dev/tty
+USE_CADDY_IN="${USE_CADDY_IN:-$CUR_USE_CADDY}"
+case "$USE_CADDY_IN" in
+	y|Y|yes|Yes) USE_CADDY="yes" ;;
+	*) USE_CADDY="no" ;;
+esac
+if [[ "$USE_CADDY" == "no" ]]; then
+	read -rp "Address for calsync-web to listen on [0.0.0.0:8000]: " LISTEN </dev/tty
+	LISTEN="${LISTEN:-0.0.0.0:8000}"
+else
+	LISTEN="127.0.0.1:8000"
+fi
 
 read -rp "Refresh interval in minutes [$CUR_INTERVAL]: " INTERVAL </dev/tty
 INTERVAL="${INTERVAL:-$CUR_INTERVAL}"
@@ -46,14 +63,18 @@ apt-get update -qq
 apt-get install -y -qq git python3 python3-venv python3-pip curl ca-certificates \
 	debian-keyring debian-archive-keyring apt-transport-https gnupg
 
-echo "==> caddy"
-if ! command -v caddy >/dev/null; then
-	curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-		| gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-	curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-		> /etc/apt/sources.list.d/caddy-stable.list
-	apt-get update -qq
-	apt-get install -y -qq caddy
+if [[ "$USE_CADDY" == "yes" ]]; then
+	echo "==> caddy"
+	if ! command -v caddy >/dev/null; then
+		curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+			| gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+		curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+			> /etc/apt/sources.list.d/caddy-stable.list
+		apt-get update -qq
+		apt-get install -y -qq caddy
+	fi
+else
+	echo "==> caddy skipped, calsync-web will listen on $LISTEN"
 fi
 
 echo "==> user $USER_NAME"
@@ -102,26 +123,30 @@ chown -R "$USER_NAME:$USER_NAME" "$DIR"
 chmod 755 "$DIR" "$DIR/cal"
 
 echo "==> systemd"
-for unit in calsync calsync-web; do
-	sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/$unit.service" \
-		> "/etc/systemd/system/$unit.service"
-done
+sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g" "$DIR/deploy/calsync.service" \
+	> "/etc/systemd/system/calsync.service"
+sed "s#@DIR@#$DIR#g; s#@USER@#$USER_NAME#g; s#@LISTEN@#$LISTEN#g" "$DIR/deploy/calsync-web.service" \
+	> "/etc/systemd/system/calsync-web.service"
 systemctl daemon-reload
 systemctl enable --now calsync calsync-web
 
-echo "==> caddy config"
-sed "s#@DOMAIN@#$DOMAIN#g; s#@DIR@#$DIR#g" "$DIR/deploy/Caddyfile.tmpl" \
-	> /etc/caddy/Caddyfile
-systemctl reload caddy 2>/dev/null || systemctl restart caddy
+if [[ "$USE_CADDY" == "yes" ]]; then
+	echo "==> caddy config"
+	sed "s#@DOMAIN@#$DOMAIN#g; s#@DIR@#$DIR#g" "$DIR/deploy/Caddyfile.tmpl" \
+		> /etc/caddy/Caddyfile
+	systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
-if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
-	ufw allow 80,443/tcp >/dev/null || true
+	if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+		ufw allow 80,443/tcp >/dev/null || true
+	fi
 fi
 
 cat > /etc/calsync.env <<EOF
 CALSYNC_DIR=$DIR
 CALSYNC_DOMAIN=$DOMAIN
 CALSYNC_USER=$USER_NAME
+CALSYNC_USE_CADDY=$USE_CADDY
+CALSYNC_LISTEN=$LISTEN
 EOF
 ln -sf "$DIR/deploy/calsyncctl" /usr/local/bin/calsync
 chmod +x "$DIR/deploy/calsyncctl"
@@ -136,4 +161,15 @@ for g in cfg.get("groups", []):
     print(f"   https://{sys.argv[2]}/cal/{g.get('slug') or g.get('name')}.ics")
 PY
 echo " Control:  calsync list | add <group> <slug> | update | interval <min>"
+if [[ "$USE_CADDY" == "no" ]]; then
+	THIS_PORT="${LISTEN##*:}"
+	echo
+	echo " Caddy was skipped. calsync-web listens on $LISTEN (plain HTTP,"
+	echo " serves / and /cal/*.ics - no separate static file config needed)."
+	echo " On your own reverse proxy, point $DOMAIN at this host's address,"
+	echo " port $THIS_PORT, e.g. in Caddy:"
+	echo "     reverse_proxy <this-host>:$THIS_PORT {"
+	echo "         header_up X-Forwarded-Proto {scheme}"
+	echo "     }"
+fi
 echo "================================================================"

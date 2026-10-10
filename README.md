@@ -21,9 +21,11 @@ Page assets live in `web/`.
 curl -fsSL https://raw.githubusercontent.com/Speedware/calsync/main/deploy/install.sh | sudo bash
 ```
 
-Prompts for domain, refresh interval (minutes, default 60), and optional
-group + slug pairs. Installs git/python/caddy, both systemd services, and
-Caddy with automatic SSL.
+Prompts for domain, refresh interval (minutes, default 60), optional
+group + slug pairs, and whether to install Caddy here for automatic HTTPS.
+Say no if you already terminate TLS elsewhere (e.g. your own Caddy) -
+calsync-web then listens in plain HTTP on an address you choose and serves
+both the page and `/cal/*.ics` itself; point your reverse proxy at it.
 
 Subscription URL: `https://<domain>/cal/<slug>.ics`
 
