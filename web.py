@@ -15,6 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import calsync
 
 GROUP_RE = re.compile(r"[А-Яа-яЁё0-9 \-]{3,64}")
+SLUG_RE = re.compile(r"[a-z0-9-]{1,64}")
 CACHE_TTL = 600
 LOCK_FILE = ".config.lock"
 
@@ -154,6 +155,21 @@ def index():
 @app.get("/umte.png")
 def background():
     return send_file("web/umte.png", max_age=86400)
+
+
+@app.get("/cal/<slug>.ics")
+def serve_ics(slug):
+    # Caddy's file_server normally handles this path directly; this route is
+    # the fallback for setups without a local reverse proxy in front of us.
+    if not SLUG_RE.fullmatch(slug):
+        return "not found", 404
+    cal_dir = calsync.config.get("calendar_path", "cal")
+    path = os.path.join(cal_dir, f"{slug}.ics")
+    if not os.path.isfile(path):
+        return "not found", 404
+    resp = send_file(path, mimetype="text/calendar", max_age=1800)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 @app.post("/api/subscribe")
