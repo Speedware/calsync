@@ -8,5 +8,10 @@
   <rect x="76" y="116" width="300" height="300" rx="64" fill="url(#card)"/>
   <rect x="144" y="84" width="34" height="70" rx="17" fill="#2A4FB8"/>
   <rect x="274" y="84" width="34" height="70" rx="17" fill="#2A4FB8"/>
-  <circle cx="226" cy="282" r="54" fill="#FFFFFF"/>
+  <g fill="#FFFFFF">
+    <circle cx="166" cy="222" r="30" opacity="0.55"/>
+    <circle cx="286" cy="222" r="30" opacity="0.55"/>
+    <circle cx="166" cy="326" r="30" opacity="0.55"/>
+    <circle cx="286" cy="326" r="34"/>
+  </g>
 </svg>
