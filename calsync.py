@@ -161,6 +161,8 @@ def parse_schedule(html: str) -> list[dict]:
             start, _, end = tds[1].get_text(strip=True).partition("-")
             number = tds[0].get_text(strip=True)
             subject, teacher, tags = _info_cell(tds[3])
+            link_tag = tds[3].find("a")
+            link = link_tag.get("href") if link_tag else None
 
             key = (current_date, number, subject, start.strip())
             if key in seen:
@@ -177,6 +179,7 @@ def parse_schedule(html: str) -> list[dict]:
                 "Teacher": teacher,
                 "Tags": tags,
                 "Type": WEBINAR_TAG if WEBINAR_TAG in tags else (tags[0] if tags else ""),
+                "Link": link,
             })
 
     return lessons
@@ -205,9 +208,9 @@ def _event_end_date(event):
     return dt.date()
 
 
-def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) -> int:
+def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) -> tuple[int, dict]:
     if not old_content:
-        return 0
+        return 0, {}
 
     old_limit = sys.getrecursionlimit()
     sys.setrecursionlimit(max(old_limit, PARSE_RECURSION_LIMIT))
@@ -222,6 +225,8 @@ def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) ->
     finally:
         sys.setrecursionlimit(old_limit)
 
+    old_urls = {event.uid: event.url for event in events if event.url}
+
     cutoff = feed_start - timedelta(days=ARCHIVE_DAYS)
     kept = 0
     for event in events:
@@ -235,7 +240,7 @@ def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) ->
         if past:
             cal.events.add(event)
             kept += 1
-    return kept
+    return kept, old_urls
 
 
 def create_ics(lessons: list[dict], group_name: str, slug: str) -> None:
@@ -273,7 +278,7 @@ def create_ics(lessons: list[dict], group_name: str, slug: str) -> None:
     cal.extra.append(ContentLine(name="NAME", value=group_name))
 
     try:
-        archived = _carry_over(old_content, feed_start, cal, group_name)
+        archived, old_urls = _carry_over(old_content, feed_start, cal, group_name)
     except _KeepOld:
         return
 
@@ -298,6 +303,7 @@ def create_ics(lessons: list[dict], group_name: str, slug: str) -> None:
         )
         event.begin = start_dt
         event.end = end_dt
+        event.url = lesson.get("Link") or old_urls.get(event.uid)
         if is_webinar:
             event.alarms.append(DisplayAlarm(trigger=timedelta(minutes=-30)))
 
