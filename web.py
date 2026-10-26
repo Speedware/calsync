@@ -14,6 +14,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import calsync
 
+calsync.config = calsync.load_config()
+
 GROUP_RE = re.compile(r"[А-Яа-яЁё0-9 \-]{3,64}")
 SLUG_RE = re.compile(r"[a-z0-9-]{1,64}")
 CACHE_TTL = 600

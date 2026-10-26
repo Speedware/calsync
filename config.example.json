@@ -2,6 +2,8 @@
     "launch_interval_min": 60,
     "request_timeout_sec": 30,
     "calendar_path": "cal",
+    "umeos_login": "",
+    "umeos_password": "",
     "subject_replacements": {
         "Архитектура и инжиниринг бизнес-систем": "Архитектура и инжиниринг БС",
         "Экономико-математические методы и модели": "ЭМ методы и модели",

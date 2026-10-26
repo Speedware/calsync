@@ -30,6 +30,8 @@ LOG_FILE = "calsync.log"
 LOG_BACKUP_DAYS = 31
 BASE = "https://umeos.ru"
 SCHEDULE_ENDPOINT = BASE + "/blocks/umerasp/json_rasper.php"
+LOGIN_URL = BASE + "/login/index.php"
+LOGIN_TOKEN_RE = re.compile(r'name="logintoken"\s+value="([^"]+)"')
 MIN_INTERVAL_MIN = 60
 DEFAULT_INTERVAL_MIN = 60
 DEFAULT_TIMEOUT_SEC = 45
@@ -71,14 +73,56 @@ def load_config() -> dict:
         return json.load(f)
 
 
-def fetch_schedule_html(group_name: str, timeout: int) -> str:
+def _is_login_wall(html: str) -> bool:
+    return 'name="logintoken"' in html
+
+
+def _umeos_login(timeout: int) -> bool:
+    username = config.get("umeos_login")
+    password = config.get("umeos_password")
+    if not username or not password:
+        logging.error(Fore.RED + "umeos.ru requires login but umeos_login/umeos_password are not set in config.json")
+        return False
+
+    resp = SESSION.get(LOGIN_URL, timeout=(CONNECT_TIMEOUT_SEC, timeout))
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+    m = LOGIN_TOKEN_RE.search(resp.text)
+    token = m.group(1) if m else ""
+
     resp = SESSION.post(
-        SCHEDULE_ENDPOINT,
-        data={"type": "group", "groupname": group_name},
+        LOGIN_URL,
+        data={"username": username, "password": password, "logintoken": token},
         timeout=(CONNECT_TIMEOUT_SEC, timeout),
     )
     resp.raise_for_status()
     resp.encoding = "utf-8"
+    if _is_login_wall(resp.text):
+        logging.error(Fore.RED + "umeos.ru login failed - check umeos_login/umeos_password in config.json")
+        return False
+
+    logging.info(Fore.BLUE + "umeos.ru: logged in")
+    return True
+
+
+def fetch_schedule_html(group_name: str, timeout: int) -> str:
+    def _post() -> requests.Response:
+        resp = SESSION.post(
+            SCHEDULE_ENDPOINT,
+            data={"type": "group", "groupname": group_name},
+            timeout=(CONNECT_TIMEOUT_SEC, timeout),
+        )
+        resp.raise_for_status()
+        resp.encoding = "utf-8"
+        return resp
+
+    resp = _post()
+    if _is_login_wall(resp.text):
+        if not _umeos_login(timeout):
+            raise requests.RequestException("umeos.ru login required but failed")
+        resp = _post()
+        if _is_login_wall(resp.text):
+            raise requests.RequestException("umeos.ru still shows the login page after logging in")
     return resp.text
 
 
