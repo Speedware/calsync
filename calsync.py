@@ -26,6 +26,16 @@ from ics.grammar.parse import ContentLine
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="ics.component")
 init(autoreset=True)
+# tatsu (the grammar engine behind ics's parser) calls colorama.init() itself
+# on every single content line it parses. Each call re-wraps whatever
+# sys.stdout currently is, nesting one more layer every time - on a large
+# archived .ics that chain gets deep enough for a plain `.closed` property
+# check to blow the recursion limit (this was misdiagnosed earlier as the
+# .ics parser itself choking on file size). One real init() above is enough;
+# neutralize further calls so they can't keep nesting.
+import colorama as _colorama  # noqa: E402
+
+_colorama.init = lambda *a, **k: None
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -46,7 +56,6 @@ DEFAULT_TIMEOUT_SEC = 45
 CONNECT_TIMEOUT_SEC = 10
 HTTP_RETRIES = 2
 ARCHIVE_DAYS = 365
-PARSE_RECURSION_LIMIT = 10000
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 TZ = pytz.timezone("Europe/Moscow")
@@ -54,12 +63,20 @@ DAY_RE = re.compile(r"^\s*(\S+)\s+(\d{2}\.\d{2}\.\d{4})\s*$")
 WEBINAR_TAG = "вебинар"
 VOLATILE = ("DTSTAMP", "LAST-MODIFIED", "CREATED")
 
+def _msk_time(secs, *_args):
+    return datetime.fromtimestamp(secs, TZ).timetuple()
+
+
 _file_handler = logging.handlers.TimedRotatingFileHandler(
     LOG_FILE, when="midnight", backupCount=LOG_BACKUP_DAYS, encoding="utf-8"
 )
-_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S"))
+_file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
+_file_formatter.converter = _msk_time
+_file_handler.setFormatter(_file_formatter)
 _console_handler = logging.StreamHandler()
-_console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S"))
+_console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S")
+_console_formatter.converter = _msk_time
+_console_handler.setFormatter(_console_formatter)
 logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handler])
 
 SESSION = requests.Session()
@@ -289,8 +306,6 @@ def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) ->
     if not old_content:
         return 0, {}
 
-    old_limit = sys.getrecursionlimit()
-    sys.setrecursionlimit(max(old_limit, PARSE_RECURSION_LIMIT))
     try:
         events = list(Calendar(old_content).events)
     except Exception as exc:
@@ -299,8 +314,6 @@ def _carry_over(old_content: str, feed_start, cal: Calendar, group_name: str) ->
             exc_info=True,
         )
         raise _KeepOld()
-    finally:
-        sys.setrecursionlimit(old_limit)
 
     old_urls = {event.uid: event.url for event in events if event.url}
 
