@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import logging
 import logging.handlers
 import os
 import re
 import sys
+import threading
 import time
 import warnings
 from datetime import datetime, timedelta
@@ -32,6 +35,8 @@ BASE = "https://umeos.ru"
 SCHEDULE_ENDPOINT = BASE + "/blocks/umerasp/json_rasper.php"
 LOGIN_URL = BASE + "/login/index.php"
 LOGIN_TOKEN_RE = re.compile(r'name="logintoken"\s+value="([^"]+)"')
+LOGIN_STATE_FILE = "login_state.json"
+MIN_LOGIN_INTERVAL_SEC = 600
 MIN_INTERVAL_MIN = 60
 DEFAULT_INTERVAL_MIN = 60
 DEFAULT_TIMEOUT_SEC = 45
@@ -57,11 +62,55 @@ logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handle
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": UA, "Referer": BASE + "/"})
 _retry = requests.adapters.Retry(
+    # 429 is deliberately not retried here - hammering a rate limit is how
+    # accounts get flagged; a 429 should fail fast and back off, not retry.
     total=HTTP_RETRIES, connect=HTTP_RETRIES, read=HTTP_RETRIES,
-    backoff_factor=3, status_forcelist=(429, 500, 502, 503, 504),
+    backoff_factor=3, status_forcelist=(500, 502, 503, 504),
     allowed_methods=frozenset({"GET", "POST"}),
 )
 SESSION.mount("https://", requests.adapters.HTTPAdapter(max_retries=_retry))
+
+_login_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _login_file_lock():
+    # Guards the login cooldown across processes too (the calsync daemon
+    # and calsync-web each run with their own SESSION/process).
+    f = open(LOGIN_STATE_FILE + ".lock", "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
+def _load_login_state() -> dict:
+    try:
+        with open(LOGIN_STATE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_login_state(state: dict) -> None:
+    try:
+        tmp = LOGIN_STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        os.replace(tmp, LOGIN_STATE_FILE)
+    except OSError:
+        pass
+
+
+def _restore_session() -> None:
+    cookies = _load_login_state().get("cookies")
+    if cookies:
+        SESSION.cookies.update(cookies)
+
+
+_restore_session()
 
 config: dict = {}
 
@@ -78,31 +127,47 @@ def _is_login_wall(html: str) -> bool:
 
 
 def _umeos_login(timeout: int) -> bool:
-    username = config.get("umeos_login")
-    password = config.get("umeos_password")
-    if not username or not password:
-        logging.error(Fore.RED + "umeos.ru requires login but umeos_login/umeos_password are not set in config.json")
-        return False
+    with _login_lock, _login_file_lock():
+        state = _load_login_state()
+        elapsed = time.time() - state.get("last_attempt", 0)
+        if elapsed < MIN_LOGIN_INTERVAL_SEC:
+            logging.info(
+                Fore.BLUE + f"umeos.ru: login tried {elapsed:.0f}s ago, "
+                f"waiting out the {MIN_LOGIN_INTERVAL_SEC}s cooldown instead of retrying"
+            )
+            return False
 
-    resp = SESSION.get(LOGIN_URL, timeout=(CONNECT_TIMEOUT_SEC, timeout))
-    resp.raise_for_status()
-    resp.encoding = "utf-8"
-    m = LOGIN_TOKEN_RE.search(resp.text)
-    token = m.group(1) if m else ""
+        state["last_attempt"] = time.time()
+        _save_login_state(state)
 
-    resp = SESSION.post(
-        LOGIN_URL,
-        data={"username": username, "password": password, "logintoken": token},
-        timeout=(CONNECT_TIMEOUT_SEC, timeout),
-    )
-    resp.raise_for_status()
-    resp.encoding = "utf-8"
-    if _is_login_wall(resp.text):
-        logging.error(Fore.RED + "umeos.ru login failed - check umeos_login/umeos_password in config.json")
-        return False
+        username = config.get("umeos_login")
+        password = config.get("umeos_password")
+        if not username or not password:
+            logging.error(Fore.RED + "umeos.ru requires login but umeos_login/umeos_password are not set in config.json")
+            return False
 
-    logging.info(Fore.BLUE + "umeos.ru: logged in")
-    return True
+        resp = SESSION.get(LOGIN_URL, timeout=(CONNECT_TIMEOUT_SEC, timeout))
+        resp.raise_for_status()
+        resp.encoding = "utf-8"
+        m = LOGIN_TOKEN_RE.search(resp.text)
+        token = m.group(1) if m else ""
+
+        resp = SESSION.post(
+            LOGIN_URL,
+            data={"username": username, "password": password, "logintoken": token},
+            headers={"Referer": LOGIN_URL},
+            timeout=(CONNECT_TIMEOUT_SEC, timeout),
+        )
+        resp.raise_for_status()
+        resp.encoding = "utf-8"
+        if _is_login_wall(resp.text):
+            logging.error(Fore.RED + "umeos.ru login failed - check umeos_login/umeos_password in config.json")
+            return False
+
+        logging.info(Fore.BLUE + "umeos.ru: logged in")
+        state["cookies"] = requests.utils.dict_from_cookiejar(SESSION.cookies)
+        _save_login_state(state)
+        return True
 
 
 def fetch_schedule_html(group_name: str, timeout: int) -> str:

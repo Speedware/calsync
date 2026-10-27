@@ -7,4 +7,5 @@ cal/
 calsync.log*
 config.json
 debug_login_*.png
+login_state.json*
 venv/
