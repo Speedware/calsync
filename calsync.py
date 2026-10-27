@@ -82,6 +82,7 @@ def _login_file_lock():
     # and calsync-web each run with their own SESSION/process).
     f = open(LOGIN_STATE_FILE + ".lock", "w")
     try:
+        os.chmod(LOGIN_STATE_FILE + ".lock", 0o600)
         fcntl.flock(f, fcntl.LOCK_EX)
         yield
     finally:
@@ -102,6 +103,7 @@ def _save_login_state(state: dict) -> None:
         tmp = LOGIN_STATE_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(state, f)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, LOGIN_STATE_FILE)
     except OSError:
         pass
@@ -174,6 +176,10 @@ def _umeos_login(timeout: int) -> bool:
         return True
 
 
+class RateLimited(Exception):
+    pass
+
+
 def fetch_schedule_html(group_name: str, timeout: int) -> str:
     def _post() -> requests.Response:
         resp = SESSION.post(
@@ -181,6 +187,8 @@ def fetch_schedule_html(group_name: str, timeout: int) -> str:
             data={"type": "group", "groupname": group_name},
             timeout=(CONNECT_TIMEOUT_SEC, timeout),
         )
+        if resp.status_code == 429:
+            raise RateLimited("umeos.ru rate-limited the schedule endpoint (429)")
         resp.raise_for_status()
         resp.encoding = "utf-8"
         return resp
@@ -431,7 +439,11 @@ def run_once() -> None:
     for i, g in enumerate(groups):
         if i > 0:
             time.sleep(random.uniform(*GROUP_DELAY_RANGE))
-        ok += process_group(g, timeout)
+        try:
+            ok += process_group(g, timeout)
+        except RateLimited as exc:
+            logging.error(Fore.RED + f"{exc} - stopping this cycle early, remaining groups skipped")
+            break
     logging.info(Fore.BLUE + f"Done in {time.monotonic() - started:.1f}s. OK: {ok}/{len(groups)}")
 
 
@@ -472,7 +484,8 @@ def main() -> int:
         except Exception as exc:
             logging.error(Fore.RED + f"processing loop error: {exc}")
         try:
-            time.sleep(interval_min * 60)
+            jitter = random.uniform(0, interval_min * 60 * 0.15)
+            time.sleep(interval_min * 60 + jitter)
         except KeyboardInterrupt:
             logging.info(Fore.BLUE + "stopped by user")
             return 0
