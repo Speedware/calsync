@@ -8,6 +8,7 @@ import json
 import logging
 import logging.handlers
 import os
+import random
 import re
 import sys
 import threading
@@ -37,6 +38,8 @@ LOGIN_URL = BASE + "/login/index.php"
 LOGIN_TOKEN_RE = re.compile(r'name="logintoken"\s+value="([^"]+)"')
 LOGIN_STATE_FILE = "login_state.json"
 MIN_LOGIN_INTERVAL_SEC = 600
+LOGIN_FORM_DELAY_RANGE = (1.5, 3.5)
+GROUP_DELAY_RANGE = (3.0, 9.0)
 MIN_INTERVAL_MIN = 60
 DEFAULT_INTERVAL_MIN = 60
 DEFAULT_TIMEOUT_SEC = 45
@@ -152,6 +155,7 @@ def _umeos_login(timeout: int) -> bool:
         m = LOGIN_TOKEN_RE.search(resp.text)
         token = m.group(1) if m else ""
 
+        time.sleep(random.uniform(*LOGIN_FORM_DELAY_RANGE))
         resp = SESSION.post(
             LOGIN_URL,
             data={"username": username, "password": password, "logintoken": token},
@@ -423,7 +427,11 @@ def run_once() -> None:
 
     timeout = config.get("request_timeout_sec", DEFAULT_TIMEOUT_SEC)
     started = time.monotonic()
-    ok = sum(process_group(g, timeout) for g in groups)
+    ok = 0
+    for i, g in enumerate(groups):
+        if i > 0:
+            time.sleep(random.uniform(*GROUP_DELAY_RANGE))
+        ok += process_group(g, timeout)
     logging.info(Fore.BLUE + f"Done in {time.monotonic() - started:.1f}s. OK: {ok}/{len(groups)}")
 
 
